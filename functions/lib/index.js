@@ -13,12 +13,6 @@ const admin = require("firebase-admin");
 admin.initializeApp();
 // As an admin, the app has access to read and write all data, regardless of Security Rules
 const firestoreDB = admin.firestore();
-// // Start writing Firebase Functions
-// // https://firebase.google.com/docs/functions/typescript
-//
-// export const helloWorld = functions.https.onRequest((request, response) => {
-//  response.send("Hello from Firebase!")
-// })
 // Keeps track of the length of the 'products' list in a separate document property.
 exports.documentWriteListener = functions.firestore
     .document('products/{documentUid}')
@@ -44,13 +38,43 @@ exports.documentWriteListener = functions.firestore
         console.log('Products counter updated.', transactionRes);
     }));
 });
+// Keeps track of the length of the 'products' list in a separate document property.
+exports.mtzProdsBogotaWriteListener = functions.firestore
+    .document('prods-bogota/{documentUid}')
+    .onWrite(change => {
+    const countersRef = firestoreDB.collection('counters');
+    const countRef = countersRef.doc('counts');
+    let increment;
+    if (!change.before.exists && change.after.exists) { // Si antes no existia (before) y despues si existe (after) entonces el registro es nuevo y aumento uno al contador de productos
+        increment = 1;
+    }
+    else if (change.before.exists && !change.after.exists) { // Si antes existia (before) y despues no existe (after) entonces el registro se elimino y quito uno al contador de productos
+        increment = -1;
+    }
+    else {
+        return null;
+    }
+    return firestoreDB.runTransaction((t) => __awaiter(this, void 0, void 0, function* () {
+        const countsSnap = yield t.get(countRef);
+        const newProdsCount = (countsSnap.data().prods_bogota_count || 0) + increment;
+        const transactionRes = yield t.set(countRef, {
+            prods_bogota_count: newProdsCount
+        }, { merge: true });
+        console.log('Bogota products counter updated.', transactionRes);
+    }));
+});
 // If the counts document gets deleted, recount the all the counters
 exports.recountProds = functions.firestore.document('counters/counts').onDelete((snap) => __awaiter(this, void 0, void 0, function* () {
     const counterDocRef = snap.ref;
+    // Productos
     const prodsCollectionRef = firestoreDB.collection('products');
     const prodsCollectionSnap = yield prodsCollectionRef.get();
+    // Productos bogota
+    const mtzProdsBogotaProdsCollectionRef = firestoreDB.collection('prods-bogota');
+    const mtzProdsBogotaProdsCollectionSnap = yield mtzProdsBogotaProdsCollectionRef.get();
     const setCounterRes = yield counterDocRef.set({
-        prods_count: prodsCollectionSnap.size
+        prods_count: prodsCollectionSnap.size,
+        prods_bogota_count: mtzProdsBogotaProdsCollectionSnap.size
     });
     console.log('All the counters are been recounted', setCounterRes);
     return true;
